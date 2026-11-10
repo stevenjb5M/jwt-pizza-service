@@ -38,7 +38,12 @@ jobs:
         run: npm run lint
 
       - name: Write config file
+        env:
+          METRICS_ENDPOINT_URL: ${{ secrets.METRICS_ENDPOINT_URL }}
+          METRICS_ACCOUNT_ID: ${{ secrets.METRICS_ACCOUNT_ID }}
+          METRICS_API_KEY: ${{ secrets.METRICS_API_KEY }}
         run: |
+          trim() { printf '%s' "$1" | tr -d '[:space:]'; }
           echo "module.exports = {
             jwtSecret: '${{ secrets.JWT_SECRET }}',
             db: {
@@ -57,9 +62,9 @@ jobs:
             },
             metrics: {
               source: 'jwt-pizza-service',
-              endpointUrl: '${{ secrets.METRICS_ENDPOINT_URL }}',
-              accountId: '${{ secrets.METRICS_ACCOUNT_ID }}',
-              apiKey: '${{ secrets.METRICS_API_KEY }}',
+              endpointUrl: '$(trim "$METRICS_ENDPOINT_URL")',
+              accountId: '$(trim "$METRICS_ACCOUNT_ID")',
+              apiKey: '$(trim "$METRICS_API_KEY")',
             },
           };" > src/config.js
 
