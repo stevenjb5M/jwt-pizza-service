@@ -1,0 +1,196 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "JWT Pizza Service infrastructure",
+
+  "Parameters": {
+    "ServiceName": {
+      "Type": "String",
+      "Description": "Unique name for the JWT Pizza Service",
+      "Default": "jwt-pizza-service"
+    },
+    "CertificateArn": {
+      "Type": "String",
+      "Description": "Load balancer web certificate ARN use to support HTTPS on the ALB",
+      "Default": "arn:aws:acm:us-east-1:654654434566:certificate/0641ca1e-feca-4925-9145-6428d9ba76f7"
+    },
+    "VpcID": {
+      "Type": "String",
+      "Description": "The ID of the VPC for the ALB",
+      "Default": "vpc-01ea107e955c49fd9",
+      "AllowedPattern": "^(?:vpc-[0-9a-f]{8,17}|)$",
+      "ConstraintDescription": "VPC ID must begin with 'vpc-' and have a valid uuid"
+    },
+    "SubnetIDs": {
+      "Type": "CommaDelimitedList",
+      "Description": "A comma delimited list of VPC network subnets for the ECS service and ALB",
+      "Default": "subnet-02746397188cb695a,subnet-02488b2a796c6bb24"
+    },
+    "SecurityGroupIDs": {
+      "Type": "CommaDelimitedList",
+      "Description": "ECS service and ALB Security groups",
+      "Default": "sg-08e98557102868626"
+    }
+  },
+
+  "Resources": {
+    "ECSCluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": { "Ref": "ServiceName" }
+      }
+    },
+    "ECSService": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": { "Ref": "ECSCluster" },
+        "CapacityProviderStrategy": [
+          {
+            "CapacityProvider": "FARGATE",
+            "Base": 0,
+            "Weight": 1
+          }
+        ],
+        "TaskDefinition": "jwt-pizza-service",
+        "ServiceName": { "Ref": "ServiceName" },
+        "SchedulingStrategy": "REPLICA",
+        "DesiredCount": 1,
+        "LoadBalancers": [
+          {
+            "ContainerName": { "Ref": "ServiceName" },
+            "ContainerPort": 80,
+            "LoadBalancerName": {
+              "Ref": "AWS::NoValue"
+            },
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ],
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "AssignPublicIp": "ENABLED",
+            "SecurityGroups": {
+              "Ref": "SecurityGroupIDs"
+            },
+            "Subnets": {
+              "Ref": "SubnetIDs"
+            }
+          }
+        },
+        "PlatformVersion": "LATEST",
+        "DeploymentConfiguration": {
+          "MaximumPercent": 200,
+          "MinimumHealthyPercent": 100,
+          "DeploymentCircuitBreaker": {
+            "Enable": true,
+            "Rollback": true
+          }
+        },
+        "DeploymentController": {
+          "Type": "ECS"
+        },
+        "ServiceConnectConfiguration": {
+          "Enabled": false
+        },
+        "Tags": [],
+        "EnableECSManagedTags": true
+      },
+      "DependsOn": ["Listener"]
+    },
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Type": "application",
+        "Name": { "Ref": "ServiceName" },
+        "SecurityGroups": {
+          "Ref": "SecurityGroupIDs"
+        },
+        "Subnets": {
+          "Ref": "SubnetIDs"
+        }
+      }
+    },
+    "TargetGroup": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "HealthCheckPath": "/",
+        "Name": { "Ref": "ServiceName" },
+        "Port": 80,
+        "Protocol": "HTTP",
+        "TargetType": "ip",
+        "HealthCheckProtocol": "HTTP",
+        "VpcId": {
+          "Ref": "VpcID"
+        },
+        "TargetGroupAttributes": [
+          {
+            "Key": "deregistration_delay.timeout_seconds",
+            "Value": "300"
+          }
+        ]
+      }
+    },
+    "Listener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "TargetGroup"
+            }
+          }
+        ],
+        "LoadBalancerArn": {
+          "Ref": "LoadBalancer"
+        },
+        "Port": 443,
+        "Protocol": "HTTPS",
+        "Certificates": [
+          {
+            "CertificateArn": { "Ref": "CertificateArn" }
+          }
+        ]
+      }
+    }
+  },
+
+  "Outputs": {
+    "ClusterName": {
+      "Description": "Cluster",
+      "Value": {
+        "Ref": "ECSCluster"
+      }
+    },
+    "ECSService": {
+      "Description": "Service",
+      "Value": {
+        "Ref": "ECSService"
+      }
+    },
+    "LoadBalancer": {
+      "Description": "Load balancer",
+      "Value": {
+        "Ref": "LoadBalancer"
+      }
+    },
+    "LoadBalancerDNSName": {
+      "Description": "Load balancer DNS name (point the pizza-service CNAME here)",
+      "Value": {
+        "Fn::GetAtt": ["LoadBalancer", "DNSName"]
+      }
+    },
+    "Listener": {
+      "Description": "Load balancer listener",
+      "Value": {
+        "Ref": "Listener"
+      }
+    },
+    "TargetGroup": {
+      "Description": "Load balancer target group",
+      "Value": {
+        "Ref": "TargetGroup"
+      }
+    }
+  }
+}
